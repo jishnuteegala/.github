@@ -20,16 +20,23 @@ Copy the callers from `callers/` into an app repository's `.github/workflows/`. 
 - Plain `GITHUB_TOKEN`; no personal access tokens. Draft-first releases published only after the checksummed archive uploads.
 - Node 24 and pnpm via each repository's `packageManager` field; actions pinned to full commit SHAs.
 
-## Rulesets
+## Repository settings and rulesets
 
-GitHub Free does not support user-level rulesets, so apply these per repository:
+GitHub Free does not support user-level rulesets, so apply everything per repository:
 
 ```sh
-gh api --method POST repos/jishnuteegala/REPO/rulesets --input rulesets/conventional-commits.json
-gh api --method POST repos/jishnuteegala/REPO/rulesets --input rulesets/app-main.json
+scripts/apply-repo-settings.sh REPO
 ```
 
-`conventional-commits.json` rejects non-conforming commit subjects on push. `app-main.json` protects the default branch: pull requests required, squash merges only, linear history, resolved review threads, and the shared CI checks passing.
+That script sets squash-only merges with branch deletion, secret scanning with push protection, an Actions allowlist (GitHub-owned plus `pnpm/action-setup` and `googleapis/release-please-action`), a read-only default workflow token that cannot approve pull requests, CodeQL default setup, and three rulesets:
+
+- `conventional-commits.json` rejects non-conforming commit subjects on push.
+- `app-main.json` protects the default branch: pull requests required, squash merges only, linear history, resolved review threads, and the shared CI checks passing with the strict up-to-date policy.
+- `protect-release-tags.json` blocks deleting or moving `v*` tags, which Release Please and the self-hosting checksum instructions rely on.
+
+Repositories that still carry classic branch protection on `main` should drop it after the `App main` ruleset is in place, since the shared CI check contexts (`check / Conventional commits`, `check / App checks`) replace the old per-repo contexts.
+
+Dependabot in this repository keeps the SHA-pinned third-party actions inside the reusable workflows current; consuming repositories reference only `@v1` and never see the pins.
 
 ## Not covered
 
