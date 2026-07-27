@@ -1,0 +1,109 @@
+name: App CI
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: JSON array of runner images for the check matrix.
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+      node-version:
+        description: Node.js version for the check matrix.
+        required: false
+        type: string
+        default: "24"
+      pre-check:
+        description: Bash commands run after dependency install, before the check.
+        required: false
+        type: string
+        default: ""
+      post-check:
+        description: Bash commands run after the check, on the Linux runner only.
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  conventional-commits:
+    name: Conventional commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Validate commit subjects
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          zero_sha="0000000000000000000000000000000000000000"
+
+          if [[ "$EVENT_NAME" == "pull_request" && -n "$BASE_SHA" ]]; then
+            commit_range="$BASE_SHA..$HEAD_SHA"
+          elif [[ -n "$BEFORE_SHA" && "$BEFORE_SHA" != "$zero_sha" ]]; then
+            commit_range="$BEFORE_SHA..$HEAD_SHA"
+          else
+            commit_range="$HEAD_SHA"
+          fi
+
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([[:alnum:]_.\/-]+\))?!?: .+'
+          invalid=0
+
+          while IFS=$'\t' read -r sha subject; do
+            if [[ ! "$subject" =~ $pattern ]]; then
+              echo "::error title=Invalid commit subject::$sha $subject"
+              invalid=1
+            fi
+          done < <(git log --no-merges --format='%h%x09%s' "$commit_range")
+
+          if [[ "$invalid" -ne 0 ]]; then
+            echo "Commit subjects must follow Conventional Commits."
+            exit 1
+          fi
+
+  check:
+    name: App checks
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare checks
+        if: inputs.pre-check != ''
+        shell: bash
+        run: ${{ inputs.pre-check }}
+
+      - name: Check app
+        run: pnpm check
+
+      - name: Run extra checks
+        if: inputs.post-check != '' && runner.os == 'Linux'
+        shell: bash
+        run: ${{ inputs.post-check }}

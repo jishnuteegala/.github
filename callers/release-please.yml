@@ -1,0 +1,29 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      recover_tag:
+        description: Existing draft release tag to rebuild and publish
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: jishnuteegala/.github/.github/workflows/release-please.yml@v1
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    with:
+      recover-tag: ${{ inputs.recover_tag || '' }}
+    secrets: inherit
