@@ -40,6 +40,55 @@ Repositories that still carry classic branch protection on `main` should drop it
 
 Dependabot in this repository keeps the SHA-pinned third-party actions inside the reusable workflows current; consuming repositories reference only `@v1` and never see the pins.
 
+## npm trusted publishing
+
+Repositories that publish to npm do so through trusted publishing (OIDC): the publish job exchanges the workflow's OIDC identity for a single-use credential, so no npm token is stored anywhere. Publishing requires a GitHub-hosted runner, Node 22.14 or newer, npm 11.5.1 or newer, and `id-token: write` on the publish job. Provenance is generated automatically for public packages published from public repositories.
+
+Each package trusts its own repository and the **calling** workflow filename (`release-please.yml`, not any reusable workflow it calls), with `npm publish` as the allowed action and the environment left empty. npm does not validate the configuration when it is saved; a mistake surfaces as a loud failure on the next publish, which is the intended behaviour since there is no token fallback.
+
+### Bootstrap for new packages
+
+npm refuses to configure a trusted publisher for a package name that has never been published, so every new package needs one direct publish first. The sequence, from an interactive logged-in npm session (browser 2FA, no token):
+
+1. Publish a throwaway `0.0.0` stub with a minimal `package.json` and README:
+
+   ```sh
+   npm publish --access public --tag bootstrap --provenance=false
+   ```
+
+   The `bootstrap` dist-tag keeps the stub out of the way, though npm assigns `latest` to a package's first publish regardless; the first real release replaces it. Provenance is disabled because a local publish has no CI identity to attest. Recently recycled names can return `409 Conflict` while the registry settles; retry after a delay.
+
+2. Configure the trusted publisher (this phase needs the interactive session; npm does not accept granular tokens for trust changes):
+
+   ```sh
+   npm trust github PACKAGE \
+     --file release-please.yml \
+     --repo jishnuteegala/REPO \
+     --allow-publish
+   ```
+
+   On the first browser challenge, select npm's option to skip 2FA for the next five minutes so a batch of packages goes through without a prompt per package. Keep batches under about 80 packages and pause a couple of seconds between calls, as npm recommends.
+
+3. Lock the package to 2FA and disallow tokens (OIDC is unaffected):
+
+   ```sh
+   npm access set mfa=publish PACKAGE
+   ```
+
+4. If a token was used anywhere in the process, revoke it immediately.
+
+`scripts/npm-oidc-bootstrap.sh` runs the whole sequence for any set of package names, as separate resumable phases with a 409 retry loop on the stub publish:
+
+```sh
+scripts/npm-oidc-bootstrap.sh all --repo jishnuteegala/REPO PACKAGE [PACKAGE...]
+```
+
+Run `publish`, `trust`, `lock`, or `verify` instead of `all` to execute one phase; re-running skips stubs that already exist and reapplies the idempotent settings.
+
+The bootstrap is once per package name. Real releases then flow entirely through Release Please and OIDC. npm has announced that bypass-2FA tokens stop working for package-management changes in early August 2026 and for direct publishing around January 2027, so the token-free path is also the durable one. When npm ships namespace-wide trusted publishing for new packages, the stub-publish phase can be replaced with that mechanism.
+
+Keep the npm account email set to a publishing alias rather than a personal address: the registry exposes the account email in `maintainers` and freezes it into each directly-published version's `_npmUser`, and version metadata is immutable once published. OIDC-published versions are attributed to `npm-oidc-no-reply@github.com` instead.
+
 ## Not covered
 
-`git-chunks` keeps its own multi-channel release pipeline (GoReleaser, npm trusted publishing, Homebrew, Scoop, Winget, AUR, Chocolatey); it is genuinely repository-specific and documented in its own `PUBLISHING-SETUP.md`.
+`git-chunks` keeps its own multi-channel release pipeline (GoReleaser, npm trusted publishing, Homebrew, Scoop, Winget, AUR, Chocolatey); it is genuinely repository-specific and documented in its own `PUBLISHING-SETUP.md`. The npm trusted publishing and bootstrap steps above apply to it all the same.
