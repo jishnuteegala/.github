@@ -43,6 +43,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           BEFORE_SHA: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           EVENT_NAME: ${{ github.event_name }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
@@ -52,6 +53,8 @@ jobs:
             commit_range="$BASE_SHA..$HEAD_SHA"
           elif [[ -n "$BEFORE_SHA" && "$BEFORE_SHA" != "$zero_sha" ]]; then
             commit_range="$BEFORE_SHA..$HEAD_SHA"
+          elif [[ -n "$DEFAULT_BRANCH" ]] && git rev-parse --verify --quiet "origin/$DEFAULT_BRANCH" > /dev/null; then
+            commit_range="origin/$DEFAULT_BRANCH..$HEAD_SHA"
           else
             commit_range="$HEAD_SHA"
           fi

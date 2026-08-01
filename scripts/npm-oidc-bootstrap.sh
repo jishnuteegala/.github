@@ -16,6 +16,13 @@
 #   - npm 11.5.1+ for trusted publishing, and a version that has
 #     `npm trust` (11.18+) for the trust phase
 #
+# Which phases the user must run themselves: on accounts with web-based
+# 2FA, `publish` and `lock` each trigger a browser one-time-password
+# prompt (EOTP) and MUST be run interactively by the user in their own
+# terminal. `trust` and `verify` are OTP-free and safe for an agent to
+# run headlessly. Agents: run trust/verify yourself; hand publish/lock
+# to the user with the exact command.
+#
 # Usage:
 #   ./npm-oidc-bootstrap.sh publish|trust|lock|verify|all \
 #     --repo OWNER/REPO \
