@@ -46,6 +46,14 @@ Repositories that publish to npm do so through trusted publishing (OIDC): the pu
 
 Each package trusts its own repository and the **calling** workflow filename (`release-please.yml`, not any reusable workflow it calls), with `npm publish` as the allowed action and the environment left empty. npm does not validate the configuration when it is saved; a mistake surfaces as a loud failure on the next publish, which is the intended behaviour since there is no token fallback.
 
+### Publish job requirements (learned from redirect-trace 0.1.0)
+
+Repositories with bespoke release workflows (CLIs publishing to npm rather than apps shipping static archives) must follow these rules, none of which PR CI can catch because the release path only executes on pushes to the default branch:
+
+- Start the release-please config from `templates/release-please-config.json`, or at minimum keep `"include-component-in-tag": false`. The `node` release-type otherwise prefixes tags with the package name (`redirect-trace-v0.1.0`), which fails any `v*` tag validation and falls outside the `protect-release-tags.json` ruleset.
+- Run the publish job on **Node 24** and pin npm: `npm install --global npm@12.0.1`. Never `npm@latest` - it can outpace the workflow's pinned Node (npm 12 refused Node 22.15.0 with EBADENGINE), and an in-place global upgrade of the running npm can corrupt its own module tree (`MODULE_NOT_FOUND: promise-retry` on Node 22.22.2). Node 24 + pinned npm 12.0.1 is the combination proven by git-chunks.
+- Rehearse the failure path before the first release merges: the tag format, action SHA pins, and npm version constraints in a release workflow are all invisible to PR checks. Dry-run what you can (`workflow_dispatch` with a recovery input makes retries cheap) and verify every value that only a main-branch run will exercise.
+
 ### Bootstrap for new packages
 
 npm refuses to configure a trusted publisher for a package name that has never been published, so every new package needs one direct publish first. The sequence, from an interactive logged-in npm session (browser 2FA, no token):
