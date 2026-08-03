@@ -98,6 +98,8 @@ jobs:
       - name: Install pnpm
         if: steps.target.outputs.has_release == 'true'
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          package_json_file: source/package.json
 
       - name: Set up Node.js
         if: steps.target.outputs.has_release == 'true'
