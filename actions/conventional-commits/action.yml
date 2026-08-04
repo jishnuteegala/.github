@@ -1,0 +1,44 @@
+name: Conventional commits
+description: >-
+  Validates that every commit subject in the push or pull request range
+  follows Conventional Commits. Requires the repository to be checked out
+  with fetch-depth 0.
+
+runs:
+  using: composite
+  steps:
+    - name: Validate commit subjects
+      shell: bash
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        BEFORE_SHA: ${{ github.event.before }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        EVENT_NAME: ${{ github.event_name }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        zero_sha="0000000000000000000000000000000000000000"
+
+        if [[ "$EVENT_NAME" == "pull_request" && -n "$BASE_SHA" ]]; then
+          commit_range="$BASE_SHA..$HEAD_SHA"
+        elif [[ -n "$BEFORE_SHA" && "$BEFORE_SHA" != "$zero_sha" ]]; then
+          commit_range="$BEFORE_SHA..$HEAD_SHA"
+        elif [[ -n "$DEFAULT_BRANCH" ]] && git rev-parse --verify --quiet "origin/$DEFAULT_BRANCH" > /dev/null; then
+          commit_range="origin/$DEFAULT_BRANCH..$HEAD_SHA"
+        else
+          commit_range="$HEAD_SHA"
+        fi
+
+        pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([[:alnum:]_.\/-]+\))?!?: .+'
+        invalid=0
+
+        while IFS=$'\t' read -r sha subject; do
+          if [[ ! "$subject" =~ $pattern ]]; then
+            echo "::error title=Invalid commit subject::$sha $subject"
+            invalid=1
+          fi
+        done < <(git log --no-merges --format='%h%x09%s' "$commit_range")
+
+        if [[ "$invalid" -ne 0 ]]; then
+          echo "Commit subjects must follow Conventional Commits."
+          exit 1
+        fi

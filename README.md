@@ -11,6 +11,10 @@ App repositories keep small caller workflows that reference the reusable impleme
 | `.github/workflows/app-ci.yml` | Validates commit subjects against Conventional Commits, then runs `pnpm check` (each repo defines its own `check` script). Accepts an `os` matrix and `node-version` input. |
 | `.github/workflows/release-please.yml` | Runs Release Please with the default changelog renderer, then builds the tagged source, packages a checksummed reproducible dist archive via the repo's `scripts/package_release.py`, attaches it, and publishes the draft release. Supports draft recovery through the `recover-tag` input. |
 
+| Composite action | What it does |
+|---|---|
+| `actions/conventional-commits` | Validates every commit subject in the push or pull request range against Conventional Commits. Used by `app-ci.yml` and callable directly from bespoke CI (git-chunks): check out with `fetch-depth: 0`, then `uses: jishnuteegala/.github/actions/conventional-commits@v1`. A composite action rather than a reusable workflow so consuming jobs keep their own check-context names. |
+
 Copy the callers from `callers/` into an app repository's `.github/workflows/`. The release caller expects the repository to own `release-please-config.json` (start from `templates/release-please-config.json`), `.release-please-manifest.json`, and `scripts/package_release.py`.
 
 ## Conventions baked in
