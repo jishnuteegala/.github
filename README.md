@@ -17,6 +17,7 @@ Copy the callers from `callers/` into an app repository's `.github/workflows/`. 
 
 - Conventional Commit subjects with types `build chore ci docs feat fix perf refactor revert style test`; scopes and `!` markers supported.
 - The default Release Please changelog renderer, because squash-merged PRs carry extra Conventional Commit messages in the body and the default renderer expands them into separate changelog entries. `changelog-type: "github"` discards that expansion (see googleapis/release-please#2758), and on a solo repository its PR attribution adds nothing.
+- Explicit `changelog-sections` making `docs`, `build`, and `ci` visible alongside the defaults, so those commits are recorded in the changelog. Consequence of Release Please's coupling: any visible-section commit also triggers a release pull request, so docs/build/ci commits produce patch releases. `chore`, `style`, `refactor`, and `test` stay hidden (no changelog entry, no release).
 - `GITHUB_TOKEN` by default; an optional `RELEASE_PLEASE_TOKEN` secret is used when configured (callers pass `secrets: inherit`), which makes required CI run automatically on release pull requests. Leaving it unset is safe and matches git-chunks; the fallback expression resolves to the repository token. Draft-first releases published only after the checksummed archive uploads.
 - Node 24 and pnpm via each repository's `packageManager` field; actions pinned to full commit SHAs.
 
