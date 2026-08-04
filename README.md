@@ -30,7 +30,7 @@ scripts/apply-repo-settings.sh REPO "check / Conventional commits" "check / App 
 
 The check contexts are positional arguments because they differ per repository (glasspick runs a Windows matrix leg, jq-pointer does not). Read the exact names from a CI run of the migrated workflow with `gh pr checks PR -R jishnuteegala/REPO --json name`; the contexts in `rulesets/app-main.json` are placeholders that the script replaces.
 
-That script sets squash-only merges with branch deletion, secret scanning with push protection, an Actions allowlist (GitHub-owned plus `pnpm/action-setup` and `googleapis/release-please-action`), a read-only default workflow token that cannot approve pull requests, CodeQL default setup, and three rulesets:
+That script sets squash-only merges with branch deletion, secret scanning with push protection, an Actions allowlist (GitHub-owned plus `pnpm/action-setup` and `googleapis/release-please-action`), a read-only default workflow token that may create release pull requests, immutable releases (published release assets cannot be edited or deleted), CodeQL default setup, and three rulesets:
 
 - `conventional-commits.json` rejects non-conforming commit subjects on push.
 - `app-main.json` protects the default branch: pull requests required, squash merges only, linear history, resolved review threads, and the shared CI checks passing with the strict up-to-date policy.

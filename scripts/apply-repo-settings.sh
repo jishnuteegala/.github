@@ -45,7 +45,10 @@ gh api --method PUT "repos/$REPO/actions/permissions/selected-actions" \
   > /dev/null
 gh api --method PUT "repos/$REPO/actions/permissions/workflow" \
   --field default_workflow_permissions=read \
-  --field can_approve_pull_request_reviews=false > /dev/null
+  --field can_approve_pull_request_reviews=true > /dev/null
+
+echo "Immutable releases"
+gh api --method PUT "repos/$REPO/immutable-releases" > /dev/null
 
 echo "CodeQL default setup"
 gh api --method PATCH "repos/$REPO/code-scanning/default-setup" \
