@@ -1,0 +1,70 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint
+        env:
+          VERSION: 1.7.12
+          SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        working-directory: ${{ runner.temp }}
+        run: |
+          archive="actionlint_${VERSION}_linux_amd64.tar.gz"
+          curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/${archive}"
+          echo "${SHA256}  ${archive}" | sha256sum --check
+          tar -xzf "$archive" actionlint
+
+      - name: Run actionlint
+        run: |
+          "$RUNNER_TEMP/actionlint" .github/workflows/*.y*ml callers/*.y*ml
+
+  pins:
+    name: Action pins
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The callers reference this repository's reusable workflows at @v1 by
+      # design; GitHub's SHA-pinning policy does not cover reusable workflows.
+      - name: Require full commit SHAs
+        run: |
+          uses=$(grep -rnE --include='*.yml' --include='*.yaml' '^[[:space:]]*(-[[:space:]]+)?uses:' .github/workflows actions callers)
+          status=0
+          count=0
+          while IFS=: read -r file line text; do
+            ref=$(sed -E 's/^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*//; s/[[:space:]].*//' <<< "$text" | tr -d "\"'")
+            case "$ref" in
+              ./* | docker://* | jishnuteegala/.github/.github/workflows/*) continue ;;
+            esac
+            count=$((count + 1))
+            if [[ ! "$ref" =~ @[0-9a-f]{40}$ ]]; then
+              echo "::error file=$file,line=$line::$ref is not pinned to a full commit SHA"
+              status=1
+            fi
+          done <<< "$uses"
+          echo "Checked $count action references."
+          exit "$status"
