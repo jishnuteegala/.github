@@ -4,15 +4,13 @@
 set -euo pipefail
 
 files=$(find "$@" -type f \( -name '*.yml' -o -name '*.yaml' \))
+[[ -n "$files" ]] || { echo "::error::no YAML files in $*"; exit 1; }
+# Every mapping with a `uses` key, whatever its YAML style, tag or aliasing.
+refs_of='explode(.) | .. | select(kind == "map" and has("uses")) | .uses | [line, (if kind == "scalar" and (tostring | test("^[^\t\n\"]*$")) then . else "<not a plain string>" end)] | @tsv'
 status=0
 count=0
 while IFS= read -r file; do
-  # Every mapping with a `uses` key, whatever its YAML style; a non-scalar value makes @tsv fail.
-  if ! refs=$(yq -N '.. | select(tag == "!!map" and has("uses")) | .uses | [line, .] | @tsv' "$file"); then
-    echo "::error file=$file::cannot read the uses: references"
-    status=1
-    continue
-  fi
+  refs=$(yq --yaml-fix-merge-anchor-to-spec -N "$refs_of" "$file")
   [[ -n "$refs" ]] || continue
   while IFS=$'\t' read -r line ref; do
     case "$ref" in
