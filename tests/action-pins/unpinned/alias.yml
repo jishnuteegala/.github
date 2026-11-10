@@ -1,0 +1,7 @@
+x-checkout: &checkout actions/checkout@v7.0.1
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: *checkout

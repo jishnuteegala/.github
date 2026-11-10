@@ -1,0 +1,6 @@
+name: Composite
+description: Composite action steps are checked too.
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v7.0.1

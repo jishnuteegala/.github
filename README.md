@@ -13,7 +13,9 @@ App repositories keep small caller workflows that reference the reusable impleme
 
 | Composite action | What it does |
 |---|---|
-| `actions/conventional-commits` | Validates every commit subject in the push or pull request range against Conventional Commits. Used by `app-ci.yml` and callable directly from bespoke CI (git-chunks): check out with `fetch-depth: 0`, then `uses: jishnuteegala/.github/actions/conventional-commits@v1`. A composite action rather than a reusable workflow so consuming jobs keep their own check-context names. |
+| `actions/conventional-commits` | Validates every commit subject in the push or pull request range against Conventional Commits. Used by `app-ci.yml` and callable directly from bespoke CI (git-chunks): check out with `fetch-depth: 0`, then `uses: jishnuteegala/.github/actions/conventional-commits@<sha> # v1`, where `<sha>` is the full commit SHA that `v1` points to (`git ls-remote https://github.com/jishnuteegala/.github 'refs/tags/v1^{}'`). Pin the SHA rather than `@v1`, and update it when `v1` moves: repositories that require SHA-pinned actions fail every run that references an action by tag. A composite action rather than a reusable workflow so consuming jobs keep their own check-context names. |
+
+`.github/workflows/lint.yml` checks this repository on pull requests and pushes to `main`: actionlint over the workflows and caller templates, and `scripts/check-action-pins.sh`, which parses the YAML in `.github/workflows/`, `actions/`, and `callers/` and requires every action `uses:` to be a full commit SHA, whatever the YAML style. Local `./` actions, `docker://` images, and references to this repository's own reusable workflows (the callers' `@v1`) are exempt; GitHub's SHA-pinning policy does not cover reusable workflows. The fixtures in `tests/action-pins/` run first: pinned ones must pass and each unpinned one must be rejected.
 
 Copy the callers from `callers/` into an app repository's `.github/workflows/`. The release caller expects the repository to own `release-please-config.json` (start from `templates/release-please-config.json`), `.release-please-manifest.json`, and `scripts/package_release.py`.
 
@@ -22,7 +24,7 @@ Copy the callers from `callers/` into an app repository's `.github/workflows/`. 
 - Conventional Commit subjects with types `build chore ci docs feat fix perf refactor revert style test`; scopes and `!` markers supported.
 - The default Release Please changelog renderer, because squash-merged PRs carry extra Conventional Commit messages in the body and the default renderer expands them into separate changelog entries. `changelog-type: "github"` discards that expansion (see googleapis/release-please#2758), and on a solo repository its PR attribution adds nothing.
 - Explicit `changelog-sections` making `docs`, `build`, and `ci` visible alongside the defaults, so those commits are recorded in the changelog. Consequence of Release Please's coupling: any visible-section commit also triggers a release pull request, so docs/build/ci commits produce patch releases. `chore`, `style`, `refactor`, and `test` stay hidden (no changelog entry, no release).
-- `GITHUB_TOKEN` by default; an optional `RELEASE_PLEASE_TOKEN` secret is used when configured (callers pass `secrets: inherit`), which makes required CI run automatically on release pull requests. Leaving it unset is safe and matches git-chunks; the fallback expression resolves to the repository token. Draft-first releases published only after the checksummed archive uploads.
+- `GITHUB_TOKEN` by default; an optional `RELEASE_PLEASE_TOKEN` secret is used when configured (the caller template passes no secrets, so a repository that adds the token maps it explicitly under `secrets:`), which makes required CI run automatically on release pull requests. Leaving it unset is safe and matches git-chunks; the fallback expression resolves to the repository token. Draft-first releases published only after the checksummed archive uploads.
 - Node 24 and pnpm via each repository's `packageManager` field; actions pinned to full commit SHAs.
 
 ## Repository settings and rulesets
@@ -43,7 +45,7 @@ That script sets squash-only merges with branch deletion, secret scanning with p
 
 Repositories that still carry classic branch protection on `main` should drop it after the `App main` ruleset is in place, since the shared CI check contexts (`check / Conventional commits`, `check / App checks`) replace the old per-repo contexts.
 
-Dependabot in this repository keeps the SHA-pinned third-party actions inside the reusable workflows current; consuming repositories reference only `@v1` and never see the pins.
+Dependabot in this repository keeps the SHA-pinned third-party actions inside the reusable workflows current; the app repositories' caller workflows reference only `@v1` and never see the pins.
 
 ## npm trusted publishing
 

@@ -1,0 +1,76 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint
+        env:
+          VERSION: 1.7.12
+          SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        working-directory: ${{ runner.temp }}
+        run: |
+          archive="actionlint_${VERSION}_linux_amd64.tar.gz"
+          curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/${archive}"
+          echo "${SHA256}  ${archive}" | sha256sum --check
+          tar -xzf "$archive" actionlint
+
+      - name: Run actionlint
+        run: |
+          "$RUNNER_TEMP/actionlint" .github/workflows/*.y*ml callers/*.y*ml
+
+  pins:
+    name: Action pins
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install yq
+        env:
+          VERSION: 4.54.3
+          SHA256: 129534601871538efe0ba4c5e62a34fb1d5f469bcb975c4fddeb467d82974973
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir -p bin
+          curl -fsSLo bin/yq "https://github.com/mikefarah/yq/releases/download/v${VERSION}/yq_linux_amd64"
+          echo "${SHA256}  bin/yq" | sha256sum --check
+          chmod +x bin/yq
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Test the pin check
+        run: |
+          scripts/check-action-pins.sh tests/action-pins/pinned
+          status=0
+          for f in tests/action-pins/unpinned/*.yml; do
+            if out=$(scripts/check-action-pins.sh "$f") || ! grep -qF "::error file=$f,line=" <<< "$out"; then
+              echo "::error file=$f::unpinned reference was not rejected"
+              status=1
+            fi
+          done
+          exit "$status"
+
+      - name: Require full commit SHAs
+        run: scripts/check-action-pins.sh .github/workflows actions callers
