@@ -1,0 +1,11 @@
+on: push
+jobs:
+  reusable:
+    uses: jishnuteegala/.github/.github/workflows/app-ci.yml@v1
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/local
+      - uses: docker://alpine:3.20
+      - run: |
+          echo "uses: actions/checkout@v7.0.1 inside a run block is not a reference"

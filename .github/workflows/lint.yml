@@ -48,23 +48,17 @@ jobs:
         with:
           persist-credentials: false
 
-      # The callers reference this repository's reusable workflows at @v1 by
-      # design; GitHub's SHA-pinning policy does not cover reusable workflows.
-      - name: Require full commit SHAs
+      - name: Test the pin check
         run: |
-          uses=$(grep -rnE --include='*.yml' --include='*.yaml' '^[[:space:]]*(-[[:space:]]+)?uses:' .github/workflows actions callers)
+          scripts/check-action-pins.sh tests/action-pins/pinned
           status=0
-          count=0
-          while IFS=: read -r file line text; do
-            ref=$(sed -E 's/^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*//; s/[[:space:]].*//' <<< "$text" | tr -d "\"'")
-            case "$ref" in
-              ./* | docker://* | jishnuteegala/.github/.github/workflows/*) continue ;;
-            esac
-            count=$((count + 1))
-            if [[ ! "$ref" =~ @[0-9a-f]{40}$ ]]; then
-              echo "::error file=$file,line=$line::$ref is not pinned to a full commit SHA"
+          for f in tests/action-pins/unpinned/*.yml; do
+            if out=$(scripts/check-action-pins.sh "$f") || ! grep -qF "::error file=$f" <<< "$out"; then
+              echo "::error file=$f::unpinned reference was not rejected"
               status=1
             fi
-          done <<< "$uses"
-          echo "Checked $count action references."
+          done
           exit "$status"
+
+      - name: Require full commit SHAs
+        run: scripts/check-action-pins.sh .github/workflows actions callers
