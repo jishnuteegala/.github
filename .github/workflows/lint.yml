@@ -48,6 +48,18 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install yq
+        env:
+          VERSION: 4.54.3
+          SHA256: 129534601871538efe0ba4c5e62a34fb1d5f469bcb975c4fddeb467d82974973
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir -p bin
+          curl -fsSLo bin/yq "https://github.com/mikefarah/yq/releases/download/v${VERSION}/yq_linux_amd64"
+          echo "${SHA256}  bin/yq" | sha256sum --check
+          chmod +x bin/yq
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
       - name: Test the pin check
         run: |
           scripts/check-action-pins.sh tests/action-pins/pinned
