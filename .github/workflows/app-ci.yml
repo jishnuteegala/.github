@@ -64,6 +64,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install pnpm
+        if: runner.os != 'Windows'
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Set up Node.js
@@ -71,7 +72,32 @@ jobs:
         with:
           node-version: ${{ hashFiles('.node-version') == '' && inputs.node-version || '' }}
           node-version-file: ${{ hashFiles('.node-version') != '' && '.node-version' || '' }}
-          cache: pnpm
+          cache: ${{ runner.os != 'Windows' && 'pnpm' || '' }}
+
+      # pnpm/action-setup bootstraps pnpm through npm, which is slow on Windows.
+      # Corepack needs Node first, so setup-node cannot cache the pnpm store here,
+      # and Node ships Corepack only up to version 24. The runner image's own Node
+      # is also on PATH, so Corepack is taken from beside the selected node.
+      - name: Install pnpm with Corepack
+        id: corepack
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          corepack="$(dirname "$(command -v node)")/corepack"
+          if [[ ! -e "$corepack" ]]; then
+            echo "::error::Node $(node --version) does not ship Corepack, which the Windows leg needs."
+            exit 1
+          fi
+          "$corepack" enable pnpm
+          store=$(pnpm store path --silent)
+          echo "store=$store" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm store
+        if: runner.os == 'Windows'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.corepack.outputs.store }}
+          key: pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
