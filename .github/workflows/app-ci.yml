@@ -39,7 +39,7 @@ jobs:
           fetch-depth: 0
 
       - name: Validate commit subjects
-        uses: jishnuteegala/.github/actions/conventional-commits@a53b025e84d51283f4ac6ad79fb164a9e2a48b2a # v1
+        uses: jishnuteegala/.github/actions/conventional-commits@011b2c2af221492fd593951b07b790c4248e9f4d # v1
 
   check:
     name: App checks
@@ -54,10 +54,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install pnpm
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ inputs.node-version }}
           cache: pnpm
