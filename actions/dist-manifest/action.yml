@@ -1,0 +1,71 @@
+name: Dist manifest
+description: >-
+  Writes a sorted SHA-256 manifest of a built dist/ directory and uploads it
+  as an artifact named after the source tree (mode write), or compares a fresh
+  build of a tree with the manifest CI uploaded for that tree from a run of
+  this repository, not a fork (mode compare). A mismatch fails; a missing CI
+  manifest warns in the job summary. Compare mode needs the actions read
+  permission.
+
+inputs:
+  mode:
+    description: write or compare.
+    required: true
+  path:
+    description: Repository checkout that contains the built dist/ directory.
+    required: false
+    default: .
+
+runs:
+  using: composite
+  steps:
+    - name: Name the manifest after the source tree
+      id: tree
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        CHECKOUT: ${{ inputs.path }}
+      run: |
+        if [[ "$MODE" != write && "$MODE" != compare ]]; then
+          echo "::error::mode must be write or compare, not '$MODE'."
+          exit 1
+        fi
+        tree=$(git -C "$CHECKOUT" rev-parse 'HEAD^{tree}')
+        echo "name=dist-manifest-$tree" >> "$GITHUB_OUTPUT"
+
+    - name: Write dist manifest
+      if: inputs.mode == 'write'
+      shell: bash
+      env:
+        DIST: ${{ inputs.path }}/dist
+        DIR: ${{ runner.temp }}/${{ steps.tree.outputs.name }}
+      run: |
+        mkdir -p "$DIR"
+        python3 "$GITHUB_ACTION_PATH/manifest.py" write "$DIST" "$DIR/dist.sha256"
+
+    - name: Upload dist manifest
+      if: inputs.mode == 'write'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ steps.tree.outputs.name }}
+        path: ${{ runner.temp }}/${{ steps.tree.outputs.name }}/dist.sha256
+        if-no-files-found: error
+        overwrite: true
+
+    - name: Compare with the CI dist manifest
+      if: inputs.mode == 'compare'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        NAME: ${{ steps.tree.outputs.name }}
+        DIST: ${{ inputs.path }}/dist
+      run: |
+        dir=$(mktemp -d)
+        gh api "repos/$GH_REPO/actions/artifacts?name=$NAME&per_page=100" > "$dir/artifacts.json"
+        id=$(python3 "$GITHUB_ACTION_PATH/manifest.py" select "$dir/artifacts.json")
+        if [[ -n "$id" ]]; then
+          gh api "repos/$GH_REPO/actions/artifacts/$id/zip" > "$dir/ci.zip"
+          unzip -q "$dir/ci.zip" dist.sha256 -d "$dir"
+        fi
+        python3 "$GITHUB_ACTION_PATH/manifest.py" compare "$DIST" "$dir/dist.sha256"
