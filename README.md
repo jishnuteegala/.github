@@ -54,9 +54,8 @@ That script sets squash-only merges with branch deletion, secret scanning with p
 Repositories that still carry classic branch protection on `main` should drop it after the `App main` ruleset is in place, since the shared CI check context (`check / ci-ok`) replaces the old per-repo contexts.
 
 Dependabot in this repository keeps the SHA-pinned third-party actions inside the reusable workflows and the composite actions current; the app repositories' caller workflows reference only `@v1` and never see the pins.
-A Dependabot bump inside `actions/` fails the pin-match check until a second commit re-pins the workflows to the bumped commit.
-Dependabot ignores this repository's own actions (`jishnuteegala/.github/actions/*`), because it would propose every new `main` commit as an update even when the action did not change.
-Update those self-pins by hand when an action's content changes; the pin-match check fails until the pinned commit has the current action.
+Dependabot ignores this repository's own actions (`jishnuteegala/.github/actions/*`), because each weekly run would propose the latest `main` commit even when the action did not change.
+Update those self-pins by hand when an action's content changes, including a Dependabot bump inside `actions/`; the pin-match check fails until the pinned commit has the current action.
 
 ## npm trusted publishing
 
