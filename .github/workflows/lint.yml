@@ -49,16 +49,7 @@ jobs:
           persist-credentials: false
 
       - name: Install yq
-        env:
-          VERSION: 4.54.3
-          SHA256: 129534601871538efe0ba4c5e62a34fb1d5f469bcb975c4fddeb467d82974973
-        working-directory: ${{ runner.temp }}
-        run: |
-          mkdir -p bin
-          curl -fsSLo bin/yq "https://github.com/mikefarah/yq/releases/download/v${VERSION}/yq_linux_amd64"
-          echo "${SHA256}  bin/yq" | sha256sum --check
-          chmod +x bin/yq
-          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+        run: scripts/install-yq.sh
 
       - name: Test the pin check
         run: |
@@ -74,3 +65,107 @@ jobs:
 
       - name: Require full commit SHAs
         run: scripts/check-action-pins.sh .github/workflows actions callers
+
+  scripts:
+    name: Script tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install yq
+        run: scripts/install-yq.sh
+
+      - name: Test the dist manifest script
+        run: python3 -B -m unittest discover -s tests/dist-manifest -v
+
+      - name: Test the release publish step
+        run: tests/release-publish/test.sh
+
+      - name: Require ci-ok to need every app-ci job
+        run: |
+          missing=$(yq -o=json .jobs .github/workflows/app-ci.yml | jq -r 'keys - ["ci-ok"] - .["ci-ok"].needs | .[]')
+          if [[ -n "$missing" ]]; then
+            echo "::error file=.github/workflows/app-ci.yml::ci-ok does not need: $missing"
+            exit 1
+          fi
+
+      - name: Require pinned actions of this repository to match this tree
+        run: |
+          status=0
+          if grep -nE "^[[:space:]-]*uses:[[:space:]]*[\"']?\./" .github/workflows/app-ci.yml .github/workflows/release-please.yml; then
+            echo "::error::Reusable workflows must pin jishnuteegala/.github/actions/<name>@<sha>; ./ resolves in the caller's repository."
+            status=1
+          fi
+          while read -r name sha; do
+            git fetch --quiet --depth=1 origin "$sha"
+            if ! git diff --quiet "$sha" HEAD -- "actions/$name"; then
+              echo "::error::actions/$name@$sha differs from actions/$name in this tree; pin a commit that has the current action."
+              status=1
+            fi
+          done < <(grep -rhoE 'jishnuteegala/\.github/actions/[^/@]+@[0-9a-f]{40}' .github/workflows actions | sed -E 's#.*/actions/([^@]+)@#\1 #' | sort -u)
+          exit "$status"
+
+  dist-manifest:
+    name: Dist manifest action
+    # Compare ignores artifacts of fork pull request runs, so a changed build cannot fail there.
+    if: github.event_name == 'push' || !github.event.pull_request.head.repo.fork
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build a fixture dist
+        run: |
+          mkdir -p dist/assets
+          echo a > dist/index.html
+          echo b > dist/assets/app.js
+
+      - name: Write and upload the manifest
+        uses: ./actions/dist-manifest
+        with:
+          mode: write
+
+      - name: Compare an identical build
+        uses: ./actions/dist-manifest
+        with:
+          mode: compare
+
+      - name: Change one built file
+        run: echo c > dist/assets/app.js
+
+      - name: Compare a changed build
+        id: changed
+        continue-on-error: true
+        uses: ./actions/dist-manifest
+        with:
+          mode: compare
+
+      - name: Require the changed build to fail
+        env:
+          OUTCOME: ${{ steps.changed.outcome }}
+        run: test "$OUTCOME" = failure
+
+      - name: Make a source tree that CI never built
+        run: |
+          git init -q "$RUNNER_TEMP/unbuilt"
+          cd "$RUNNER_TEMP/unbuilt"
+          echo "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" > marker
+          git add marker
+          git -c user.name=fixture -c user.email=fixture@example.invalid commit -q -m fixture
+          cp -r "$GITHUB_WORKSPACE/dist" dist
+
+      - name: Compare a tree without a CI manifest
+        uses: ./actions/dist-manifest
+        with:
+          mode: compare
+          path: ${{ runner.temp }}/unbuilt

@@ -9,7 +9,7 @@ on:
         type: string
         default: ""
       node-version:
-        description: Node.js version used to build the release.
+        description: Node.js version used to build the release, when the released source has no .node-version file.
         required: false
         type: string
         default: "24"
@@ -31,6 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
+      actions: read
       contents: write
       issues: write
       pull-requests: write
@@ -105,7 +106,8 @@ jobs:
         if: steps.target.outputs.has_release == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ hashFiles('source/.node-version') == '' && inputs.node-version || '' }}
+          node-version-file: ${{ hashFiles('source/.node-version') != '' && 'source/.node-version' || '' }}
           cache: pnpm
           cache-dependency-path: source/pnpm-lock.yaml
 
@@ -114,6 +116,13 @@ jobs:
         working-directory: source
         run: pnpm install --frozen-lockfile && pnpm build
 
+      - name: Compare with the CI build
+        if: steps.target.outputs.has_release == 'true'
+        uses: jishnuteegala/.github/actions/dist-manifest@89849bfc70a4c752e8f42e856bf4a5b011c5fd83 # v1
+        with:
+          mode: compare
+          path: source
+
       - name: Package self-hosted release
         if: steps.target.outputs.has_release == 'true'
         env:
@@ -121,7 +130,7 @@ jobs:
         run: |
           SOURCE_DATE_EPOCH=$(git -C source show -s --format=%ct "$TAG_NAME")
           export SOURCE_DATE_EPOCH
-          python -X utf8 tooling/scripts/package_release.py "${TAG_NAME#v}" source artifact
+          python -X utf8 source/scripts/package_release.py "${TAG_NAME#v}" source artifact
           (cd artifact && sha256sum --check SHA256SUMS)
 
       - name: Attach self-hosted release
@@ -138,4 +147,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ steps.target.outputs.tag }}
-        run: gh release edit "$TAG_NAME" --draft=false
+        run: |
+          if [[ "$TAG_NAME" == *-* ]]; then
+            gh release edit "$TAG_NAME" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$TAG_NAME" --draft=false
+          fi
