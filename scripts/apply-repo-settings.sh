@@ -2,8 +2,7 @@
 # Applies the standard repository settings and rulesets to one app repository.
 # Usage: scripts/apply-repo-settings.sh REPO CHECK_CONTEXT...
 # Example:
-#   scripts/apply-repo-settings.sh jq-pointer \
-#     "check / Conventional commits" "check / App checks (ubuntu-latest)"
+#   scripts/apply-repo-settings.sh jq-pointer "check / ci-ok"
 # Read the exact context names from a run of the migrated CI workflow:
 #   gh pr checks PR -R jishnuteegala/REPO --json name
 set -euo pipefail

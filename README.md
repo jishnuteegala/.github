@@ -8,14 +8,21 @@ App repositories keep small caller workflows that reference the reusable impleme
 
 | Reusable workflow | What it does |
 |---|---|
-| `.github/workflows/app-ci.yml` | Validates commit subjects against Conventional Commits, then runs `pnpm check` (each repo defines its own `check` script). Accepts an `os` matrix and `node-version` input. |
-| `.github/workflows/release-please.yml` | Runs Release Please with the default changelog renderer, then builds the tagged source, packages a checksummed reproducible dist archive via the repo's `scripts/package_release.py`, attaches it, and publishes the draft release. Supports draft recovery through the `recover-tag` input. |
+| `.github/workflows/app-ci.yml` | Validates commit subjects against Conventional Commits, then runs the `check-command` input (default `pnpm check`; each repo defines its own `check` script) on the `os` matrix. On the `ubuntu-latest` leg it runs `pnpm build` right after the install, the same sequence as the release build, and uploads the dist manifest (`actions/dist-manifest`). An optional `parallel-command` runs in its own Linux job alongside the check. A final `ci-ok` job needs every other job and fails when any of them failed or was cancelled, so `<caller job> / ci-ok` (for example `check / ci-ok`) is the only check context a ruleset needs. |
+| `.github/workflows/release-please.yml` | Runs Release Please with the default changelog renderer, then builds the tagged source, compares its `dist/` with the CI dist manifest of the same source tree, packages a checksummed reproducible dist archive with the tag's own `scripts/package_release.py`, attaches it, and publishes the draft release. A tag containing `-` is published as a prerelease that is not marked latest. Supports draft recovery through the `recover-tag` input. The caller grants `actions: read` so the job can download the CI manifest. |
 
 | Composite action | What it does |
 |---|---|
 | `actions/conventional-commits` | Validates every commit subject in the push or pull request range against Conventional Commits. Used by `app-ci.yml` and callable directly from bespoke CI (git-chunks): check out with `fetch-depth: 0`, then `uses: jishnuteegala/.github/actions/conventional-commits@<sha> # v1`, where `<sha>` is the full commit SHA that `v1` points to (`git ls-remote https://github.com/jishnuteegala/.github 'refs/tags/v1^{}'`). Pin the SHA rather than `@v1`, and update it when `v1` moves: repositories that require SHA-pinned actions fail every run that references an action by tag. A composite action rather than a reusable workflow so consuming jobs keep their own check-context names. |
+| `actions/dist-manifest` | With `mode: write`, writes a sorted SHA-256 manifest of every file under `dist/` and uploads it as the artifact `dist-manifest-<tree>`, named after `git rev-parse HEAD^{tree}`. With `mode: compare` (needs `actions: read`), compares a fresh build with the newest unexpired artifact for the same tree uploaded by a run of the same repository (fork pull request runs are ignored): a mismatch fails, and a missing artifact (expired, or a release pull request merged without CI) is a warning in the job summary. `path` names the checkout that holds `dist/` (default `.`). The manifest is written on `ubuntu-latest` only, the runner of the release build, because a CRLF checkout can change built files. |
 
-`.github/workflows/lint.yml` checks this repository on pull requests and pushes to `main`: actionlint over the workflows and caller templates, and `scripts/check-action-pins.sh`, which parses the YAML in `.github/workflows/`, `actions/`, and `callers/` and requires every action `uses:` to be a full commit SHA, whatever the YAML style. Local `./` actions, `docker://` images, and references to this repository's own reusable workflows (the callers' `@v1`) are exempt; GitHub's SHA-pinning policy does not cover reusable workflows. The fixtures in `tests/action-pins/` run first: pinned ones must pass and each unpinned one must be rejected.
+`.github/workflows/lint.yml` checks this repository on pull requests and pushes to `main`: actionlint over the workflows and caller templates, and `scripts/check-action-pins.sh`, which parses the YAML in `.github/workflows/`, `actions/`, and `callers/` and requires every action `uses:` to be a full commit SHA, whatever the YAML style.
+Local `./` actions, `docker://` images, and references to this repository's own reusable workflows (the callers' `@v1`) are exempt; GitHub's SHA-pinning policy does not cover reusable workflows.
+The fixtures in `tests/action-pins/` run first: pinned ones must pass and each unpinned one must be rejected.
+The `Script tests` job runs the dist manifest fixture tests in `tests/dist-manifest/`, runs the release workflow's `Publish complete release` step against a `gh` shim for stable and prerelease tags, requires `ci-ok` to need every `app-ci.yml` job, and requires every pinned action of this repository (`jishnuteegala/.github/actions/<name>@<sha>`) to match `actions/<name>` in the checked-out tree.
+The reusable workflows cannot use `./` for these actions, because `./` resolves in the caller's repository, so a pull request that changes an action adds a second commit that pins the first.
+After the squash merge the pinned commit stays reachable through the pull request's ref, and this check keeps its action identical to the one on `main`.
+The `Dist manifest action` job runs the action end to end on pushes and same-repository pull requests: an identical build passes, a changed file fails, and a tree without a CI manifest warns.
 
 Copy the callers from `callers/` into an app repository's `.github/workflows/`. The release caller expects the repository to own `release-please-config.json` (start from `templates/release-please-config.json`), `.release-please-manifest.json`, and `scripts/package_release.py`.
 
@@ -25,17 +32,18 @@ Copy the callers from `callers/` into an app repository's `.github/workflows/`. 
 - The default Release Please changelog renderer, because squash-merged PRs carry extra Conventional Commit messages in the body and the default renderer expands them into separate changelog entries. `changelog-type: "github"` discards that expansion (see googleapis/release-please#2758), and on a solo repository its PR attribution adds nothing.
 - Explicit `changelog-sections` making `docs`, `build`, and `ci` visible alongside the defaults, so those commits are recorded in the changelog. Consequence of Release Please's coupling: any visible-section commit also triggers a release pull request, so docs/build/ci commits produce patch releases. `chore`, `style`, `refactor`, and `test` stay hidden (no changelog entry, no release).
 - `GITHUB_TOKEN` by default; an optional `RELEASE_PLEASE_TOKEN` secret is used when configured (the caller template passes no secrets, so a repository that adds the token maps it explicitly under `secrets:`), which makes required CI run automatically on release pull requests. Leaving it unset is safe and matches git-chunks; the fallback expression resolves to the repository token. Draft-first releases published only after the checksummed archive uploads.
-- Node 24 and pnpm via each repository's `packageManager` field; actions pinned to full commit SHAs.
+- Node from the repository's `.node-version` file when it exists (an exact version, so CI and release builds match), otherwise the `node-version` input (default `24`); pnpm via each repository's `packageManager` field; actions pinned to full commit SHAs.
 
 ## Repository settings and rulesets
 
 GitHub Free does not support user-level rulesets, so apply everything per repository:
 
 ```sh
-scripts/apply-repo-settings.sh REPO "check / Conventional commits" "check / App checks (ubuntu-latest)"
+scripts/apply-repo-settings.sh REPO "check / ci-ok"
 ```
 
-The check contexts are positional arguments because they differ per repository (glasspick runs a Windows matrix leg, jq-pointer does not). Read the exact names from a CI run of the migrated workflow with `gh pr checks PR -R jishnuteegala/REPO --json name`; the contexts in `rulesets/app-main.json` are placeholders that the script replaces.
+The check contexts are positional arguments because they can differ per repository; with `app-ci.yml`, `check / ci-ok` covers every job and matrix leg.
+Read the exact names from a CI run of the migrated workflow with `gh pr checks PR -R jishnuteegala/REPO --json name`; the contexts in `rulesets/app-main.json` are placeholders that the script replaces.
 
 That script sets squash-only merges with branch deletion, secret scanning with push protection, an Actions allowlist (GitHub-owned plus `pnpm/action-setup` and `googleapis/release-please-action`), a read-only default workflow token that may create release pull requests, immutable releases (published release assets cannot be edited or deleted), CodeQL default setup, and three rulesets:
 
@@ -43,9 +51,11 @@ That script sets squash-only merges with branch deletion, secret scanning with p
 - `app-main.json` protects the default branch: pull requests required, squash merges only, linear history, resolved review threads, and the shared CI checks passing with the strict up-to-date policy.
 - `protect-release-tags.json` blocks deleting or moving `v*` tags, which Release Please and the self-hosting checksum instructions rely on.
 
-Repositories that still carry classic branch protection on `main` should drop it after the `App main` ruleset is in place, since the shared CI check contexts (`check / Conventional commits`, `check / App checks`) replace the old per-repo contexts.
+Repositories that still carry classic branch protection on `main` should drop it after the `App main` ruleset is in place, since the shared CI check context (`check / ci-ok`) replaces the old per-repo contexts.
 
-Dependabot in this repository keeps the SHA-pinned third-party actions inside the reusable workflows current; the app repositories' caller workflows reference only `@v1` and never see the pins.
+Dependabot in this repository keeps the SHA-pinned third-party actions inside the reusable workflows and the composite actions current; the app repositories' caller workflows reference only `@v1` and never see the pins.
+Dependabot ignores this repository's own actions (`jishnuteegala/.github/actions/*`), because each weekly run would propose the latest `main` commit even when the action did not change.
+Update those self-pins by hand when an action's content changes, including a Dependabot bump inside `actions/`; the pin-match check fails until the pinned commit has the current action.
 
 ## npm trusted publishing
 

@@ -9,12 +9,22 @@ on:
         type: string
         default: '["ubuntu-latest"]'
       node-version:
-        description: Node.js version for the check matrix.
+        description: Node.js version, used when the repository has no .node-version file.
         required: false
         type: string
         default: "24"
       pre-check:
         description: Bash commands run after dependency install, before the check.
+        required: false
+        type: string
+        default: ""
+      check-command:
+        description: Bash commands that check the app on every matrix runner.
+        required: false
+        type: string
+        default: pnpm check
+      parallel-command:
+        description: Bash commands run after dependency install in a separate Linux job, in parallel with the check. Skipped when empty.
         required: false
         type: string
         default: ""
@@ -59,11 +69,22 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ hashFiles('.node-version') == '' && inputs.node-version || '' }}
+          node-version-file: ${{ hashFiles('.node-version') != '' && '.node-version' || '' }}
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build app
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm build
+
+      - name: Upload dist manifest
+        if: matrix.os == 'ubuntu-latest'
+        uses: jishnuteegala/.github/actions/dist-manifest@89849bfc70a4c752e8f42e856bf4a5b011c5fd83 # v1
+        with:
+          mode: write
 
       - name: Prepare checks
         if: inputs.pre-check != ''
@@ -71,9 +92,47 @@ jobs:
         run: ${{ inputs.pre-check }}
 
       - name: Check app
-        run: pnpm check
+        shell: bash
+        run: ${{ inputs.check-command }}
 
       - name: Run extra checks
         if: inputs.post-check != '' && runner.os == 'Linux'
         shell: bash
         run: ${{ inputs.post-check }}
+
+  parallel:
+    name: Parallel checks
+    if: inputs.parallel-command != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ hashFiles('.node-version') == '' && inputs.node-version || '' }}
+          node-version-file: ${{ hashFiles('.node-version') != '' && '.node-version' || '' }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run parallel checks
+        shell: bash
+        run: ${{ inputs.parallel-command }}
+
+  ci-ok:
+    name: ci-ok
+    needs: [conventional-commits, check, parallel]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every CI job to pass
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: exit 1

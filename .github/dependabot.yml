@@ -1,9 +1,11 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    directories: ["/", "/actions/*"]
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "jishnuteegala/.github/actions/*"
     groups:
       actions:
         patterns:
