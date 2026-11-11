@@ -4,6 +4,8 @@ updates:
     directories: ["/", "/actions/*"]
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "jishnuteegala/.github/actions/*"
     groups:
       actions:
         patterns:
