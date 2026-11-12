@@ -29,7 +29,7 @@ on:
         type: string
         default: ""
       post-check:
-        description: Bash commands run after the check, on the Linux runner only.
+        description: Bash commands run after the check, on Linux runners only. The app is built on those runners before the check, so dist/ exists.
         required: false
         type: string
         default: ""
@@ -103,9 +103,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build app
-        if: matrix.os == 'ubuntu-latest'
+        if: runner.os == 'Linux'
         run: pnpm build
 
+      # One leg only: the release build runs on ubuntu-latest, and the artifact
+      # name is per tree, so a second Linux leg would overwrite it.
       - name: Upload dist manifest
         if: matrix.os == 'ubuntu-latest'
         uses: jishnuteegala/.github/actions/dist-manifest@89849bfc70a4c752e8f42e856bf4a5b011c5fd83 # v1
