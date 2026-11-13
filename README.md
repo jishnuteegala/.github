@@ -31,7 +31,7 @@ Start `.github/dependabot.yml` from `templates/dependabot.yml`.
 
 1. Merge the change to `main` in this repository.
 2. In one consumer per affected caller shape, open a draft pull request that points the caller at `app-ci.yml@<new main SHA>`, confirm its CI is green, and close it unmerged.
-3. Move the tag as a signed annotated tag and verify the signature: `git tag -fa v1 -m v1 <SHA>`, then `git tag -v v1`.
+3. Move the tag as a signed annotated tag and verify the signature: `git tag -f -s v1 -m v1 <SHA>`, then `git tag -v v1`.
 4. Push it with `git push origin refs/tags/v1 --force`, and confirm `git ls-remote origin refs/tags/v1 'refs/tags/v1^{}'` shows the new commit.
 5. Confirm the next CI run in each consumer lists `referenced_workflows` with ref `refs/tags/v1` and the new tag object.
 6. If an own-action pin changed, update the callers that pin actions by SHA (see `actions/conventional-commits`).
