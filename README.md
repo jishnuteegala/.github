@@ -27,6 +27,15 @@ The `Dist manifest action` job runs the action end to end on pushes and same-rep
 Copy the callers from `callers/` into an app repository's `.github/workflows/`. The release caller expects the repository to own `release-please-config.json` (start from `templates/release-please-config.json`), `.release-please-manifest.json`, and `scripts/package_release.py`.
 Start `.github/dependabot.yml` from `templates/dependabot.yml`.
 
+## Moving `v1`
+
+1. Merge the change to `main` in this repository.
+2. In one consumer per affected caller shape, open a draft pull request that points the caller at `app-ci.yml@<new main SHA>`, confirm its CI is green, and close it unmerged.
+3. Move the tag as a signed annotated tag and verify the signature: `git tag -fa v1 -m v1 <SHA>`, then `git tag -v v1`.
+4. Push it with `git push origin refs/tags/v1 --force`, and confirm `git ls-remote origin refs/tags/v1 'refs/tags/v1^{}'` shows the new commit.
+5. Confirm the next CI run in each consumer lists `referenced_workflows` with ref `refs/tags/v1` and the new tag object.
+6. If an own-action pin changed, update the callers that pin actions by SHA (see `actions/conventional-commits`).
+
 ## Conventions baked in
 
 - Conventional Commit subjects with types `build chore ci docs feat fix perf refactor revert style test`; scopes and `!` markers supported.
