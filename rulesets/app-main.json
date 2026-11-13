@@ -35,10 +35,7 @@
         "do_not_enforce_on_create": true,
         "required_status_checks": [
           {
-            "context": "check / Conventional commits"
-          },
-          {
-            "context": "check / App checks"
+            "context": "check / ci-ok"
           }
         ],
         "strict_required_status_checks_policy": true
