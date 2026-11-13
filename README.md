@@ -25,6 +25,7 @@ After the squash merge the pinned commit stays reachable through the pull reques
 The `Dist manifest action` job runs the action end to end on pushes and same-repository pull requests: an identical build passes, a changed file fails, and a tree without a CI manifest warns.
 
 Copy the callers from `callers/` into an app repository's `.github/workflows/`. The release caller expects the repository to own `release-please-config.json` (start from `templates/release-please-config.json`), `.release-please-manifest.json`, and `scripts/package_release.py`.
+Start `.github/dependabot.yml` from `templates/dependabot.yml`.
 
 ## Conventions baked in
 
